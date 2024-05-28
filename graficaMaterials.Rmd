@@ -1,0 +1,253 @@
+---
+title: "ProjecteVisualitzacio"
+author: "María Castellanos"
+date: "`r Sys.Date()`"
+output:
+  word_document: default
+  html_document: default
+---
+# PROJECTE ACCENTURE
+
+```{r installació de llibreries, include=FALSE}
+# install.packages('gifski') 
+# install.packages('av') 
+# install.packages("gganimate") 
+```
+
+```{r importació de llibreries, include=FALSE}
+library(readr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(tidyverse)
+library(gifski)
+library(av) 
+library(gganimate) 
+```
+
+```{r}
+MAKT <- read_csv("MAKT.csv", show_col_types = FALSE)
+# nos quedamos con la primera aparicionde cada codigo
+MAKT <- MAKT %>% distinct(MATNR, .keep_all = TRUE)
+MAKT <- MAKT %>% rename(NumMaterial = MATNR)
+```
+
+```{r}
+CHVW <- read_csv("CHVW.csv", show_col_types = FALSE)
+
+CHVW$Pais <- substr(CHVW$WERKS, 1, nchar(CHVW$WERKS) - 2)
+CHVW <- CHVW %>%
+  rename(NumeroClient = KUNNR,
+         Planta = WERKS,
+         NumMaterial = MATNR,
+         Lot = CHARG,
+         Ordre = AUFNR,
+         Item = AUFPS,
+         DocumentCompra = EBELN,
+         ItemDocumentCompra = EBELP,
+         OrdenVenta = KDAUF,
+         ItemOrdenVenta = KDPOS,
+         DocumentDeMaterial = MBLNR,
+         AnyDocumentMaterial = MJAHR,
+         ItemDocumentMaterial = ZEILE,
+         DataTransaccio = BUDAT,
+         TipusMoviment = BWART,
+         TipusOrdre = KZBEW,
+         QuantitatProducte = MENGE,
+         QuantitatUnitPerProducte = MEINS,
+         NumeroLotProveidor = LICHA,
+         NumDocumentVentes = VBELN,
+         NumItem = POSNR) 
+```
+
+```{r join taules makt i chvw}
+CHVW_MATNR <- CHVW %>% inner_join(MAKT, by = "NumMaterial")
+
+CHVW_MATNR <- CHVW_MATNR %>%
+  mutate(Fecha_Año_Mes = format(DataTransaccio, "%Y-%m")) %>%
+  mutate(
+    Dia = as.integer(format(DataTransaccio, "%d")),
+    Mes = as.integer(format(DataTransaccio, "%m")),
+    Año = as.integer(format(DataTransaccio, "%Y"))
+  ) %>%
+  filter(Año != 2023)
+```
+
+```{r Grafica exploratoria 1}
+ge1 <- CHVW_MATNR %>%
+  group_by(MAKTK) %>%
+  summarise(quantitat = n(), .groups = 'drop')
+
+ggplot(ge1, aes(x = MAKTK, y = quantitat, fill = MAKTK)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Transaccions per material",
+       x = "Material",
+       y = "Transaccions") +
+  theme_minimal() +
+  guides(fill = FALSE, scale = TRUE)
+```
+```{r Grafica exploratoria 2}
+ge2 <- CHVW_MATNR %>%
+  mutate(TotalQuantitat = QuantitatProducte * QuantitatUnitPerProducte) %>%
+  group_by(MAKTK) %>%
+  summarise(TotalQuantitatFinal = sum(TotalQuantitat))
+
+ggplot(ge2, aes(x = MAKTK, y = TotalQuantitatFinal, fill = MAKTK)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Quantitat total per material",
+       x = "Material",
+       y = "Quantitat total")+
+  theme_minimal() +
+  guides(fill = FALSE, scale = TRUE)
+```
+```{r Gráfica exploratoria 3}
+ge3 <- CHVW_MATNR %>%
+  group_by(MAKTK, Pais) %>%
+  summarise(Conteo = n(), .groups = 'drop')
+
+ggplot(ge3, aes(x = MAKTK, y = Conteo, fill = MAKTK)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_wrap(~ Pais) +
+  labs(title = "Quantitat de transaccions per material segons el pais",
+       x = "Material",
+       y = "Transaccions",
+       fill = "Material") +
+  theme_minimal() +
+  theme(axis.text.x = element_blank())
+```
+```{r Gráfica exploratoria 4}
+ge4 <- CHVW_MATNR %>%
+  group_by(MAKTK, Año) %>%
+  summarise(Conteo = n(), .groups = 'drop') 
+
+ggplot(ge4, aes(x = MAKTK, y = Conteo, fill = MAKTK)) +
+  facet_wrap(~ Año) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Quantitat de transaccions per material segons l'any",
+       x = "Any",
+       y = "Transaccions",
+       fill = "Any") +
+  theme_minimal() +
+  theme(axis.text.x = element_blank())
+```
+```{r Gráfica exploratoria 5}
+ge5 <- CHVW_MATNR %>%
+  group_by(MAKTK, Mes) %>%
+  summarise(Conteo = n(), .groups = 'drop') 
+
+
+ggplot(ge5, aes(x = MAKTK, y = Conteo, fill = MAKTK)) +
+  facet_wrap(~ Mes) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Quantitat de transaccions per material segons el mes",
+       x = "Mes",
+       y = "Transaccions",
+       fill = "Materials") +
+  theme_minimal() +
+  theme(axis.text.x = element_blank())
+```
+```{r Gráfica Animada 1}
+dataset_formatted <- CHVW_MATNR %>%
+  group_by(MAKTK, Fecha_Año_Mes) %>%
+  summarise(QuantitatProducte = round(sum(QuantitatProducte)), .groups = 'drop')
+  
+dataset_formatted <- dataset_formatted %>%
+  group_by(Fecha_Año_Mes) %>%
+  mutate(rank = rank(-QuantitatProducte),
+         Value_rel = QuantitatProducte/QuantitatProducte[rank==1],
+         Value_lbl = paste0(" ",round(QuantitatProducte/1e9))) %>%
+  group_by(MAKTK) %>% 
+  filter(rank <=10) %>%
+  ungroup()
+  
+anim <- ggplot(
+  dataset_formatted,
+  aes(rank, group = MAKTK, fill = as.factor(MAKTK), color = as.factor(MAKTK))) +
+  geom_tile(aes(y = QuantitatProducte/2,
+                height = QuantitatProducte,
+                width = 0.9), alpha = 0.8, color = NA) +
+  geom_text(aes(y = 0, label = paste(MAKTK, " ")), vjust = 0.2, hjust = 1) +
+  geom_text(aes(y = QuantitatProducte +10, label = paste(" ", round(QuantitatProducte)), hjust = 0)) +
+  coord_flip(clip = "off", expand = FALSE) +
+  scale_y_continuous() + 
+  scale_x_reverse() +
+  guides(color = FALSE, fill = FALSE) +
+  theme(axis.line=element_blank(),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks=element_blank(),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        legend.position="none",
+        panel.background=element_blank(),
+        panel.border=element_blank(),
+        panel.grid.major=element_blank(),
+        panel.grid.minor=element_blank(),
+        panel.grid.major.x = element_line( linewidth=.1, color="grey" ),
+        panel.grid.minor.x = element_line( linewidth=.1, color="grey" ),
+        plot.title=element_text(size=25, hjust=0.5, face="bold", colour="grey", vjust=-1),
+        plot.subtitle=element_text(size=18, hjust=0.5, face="italic", color="grey"),
+        plot.caption =element_text(size=8, hjust=0.5, face="italic", color="grey"),
+        plot.background=element_blank(),
+        plot.margin = margin(2,2, 2, 4, "cm")) +
+  transition_states(Fecha_Año_Mes, transition_length = 4, state_length = 1, wrap = FALSE) + 
+  view_follow(fixed_x = TRUE) + 
+  labs(title = 'Consum de materials per mes: {closest_state}',  
+       subtitle  =  "Materials",
+       caption  = "Materials")
+
+animate(anim, nframes = 300, fps = 3, width = 800, height = 600)
+```
+
+```{r Gráfica Animada 2}
+dataset_formatted <- CHVW_MATNR %>%
+  group_by(MAKTK, Año) %>%
+  summarise(QuantitatProducte = round(sum(QuantitatProducte)), .groups = 'drop')
+  
+dataset_formatted <- dataset_formatted %>%
+  group_by(Año) %>%
+  mutate(rank = rank(-QuantitatProducte),
+         Value_rel = QuantitatProducte/QuantitatProducte[rank==1],
+         Value_lbl = paste0(" ",round(QuantitatProducte/1e9))) %>%
+  group_by(MAKTK) %>% 
+  filter(rank <=10) %>%
+  ungroup()
+  
+anim <- ggplot(
+  dataset_formatted,
+  aes(rank, group = MAKTK, fill = as.factor(MAKTK), color = as.factor(MAKTK))) +
+  geom_tile(aes(y = QuantitatProducte/2,
+                height = QuantitatProducte,
+                width = 0.9), alpha = 0.8, color = NA) +
+  geom_text(aes(y = 0, label = paste(MAKTK, " ")), vjust = 0.2, hjust = 1) +
+  geom_text(aes(y = QuantitatProducte +10, label = paste(" ", round(QuantitatProducte)), hjust = 0)) +
+  coord_flip(clip = "off", expand = FALSE) +
+  scale_y_continuous() + 
+  scale_x_reverse() +
+  guides(color = FALSE, fill = FALSE) +
+  theme(axis.line=element_blank(),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks=element_blank(),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        legend.position="none",
+        panel.background=element_blank(),
+        panel.border=element_blank(),
+        panel.grid.major=element_blank(),
+        panel.grid.minor=element_blank(),
+        panel.grid.major.x = element_line( linewidth=.1, color="grey" ),
+        panel.grid.minor.x = element_line( linewidth=.1, color="grey" ),
+        plot.title=element_text(size=25, hjust=0.5, face="bold", colour="grey", vjust=-1),
+        plot.subtitle=element_text(size=18, hjust=0.5, face="italic", color="grey"),
+        plot.caption =element_text(size=8, hjust=0.5, face="italic", color="grey"),
+        plot.background=element_blank(),
+        plot.margin = margin(2,2, 2, 4, "cm")) +
+  transition_states(Año, transition_length = 4, state_length = 1, wrap = FALSE) + 
+  view_follow(fixed_x = TRUE) + 
+  labs(title = 'Consum de materials per mes: {closest_state}',  
+       subtitle  =  "Materials",
+       caption  = "Materials")
+
+animate(anim, nframes = 4, fps = 3, width = 800, height = 600)
+```
