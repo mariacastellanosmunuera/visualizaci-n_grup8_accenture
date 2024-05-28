@@ -1,1 +1,1 @@
-# visualizaci-n_grup8_accenture
+# visualizacio_grup8_accenture
